@@ -1,146 +1,117 @@
 # -*- coding: utf-8 -*-
 import math
-import os
-from beautifultable import BeautifulTable
 from selenium import webdriver
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
-from datetime import datetime
-import time
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.wait import WebDriverWait
 from gspreadAPI import GC, TESTCASE_CAL_URL
-import json
+from testresult import Test, result_table
+
 doc = GC.open_by_url(TESTCASE_CAL_URL)
 saving_tc = doc.worksheet('적금계산기')
-
-sum_pass = 0
-sum_fail = 0
-total = len(saving_tc.col_values(1)) - 1
-sum_nt = 0
-
-key = saving_tc.row_values(1)
-col = len(key)
 
 driver = webdriver.Chrome('/usr/local/bin/chromedriver')
 driver.get('https://banksalad.com/savings/calculator')
 
 
-def tc_to_json():
+def tc_to_json(i: int) -> dict:
+    key = saving_tc.row_values(1)
+    col = len(key)
     value = saving_tc.row_values(i + 1)
 
-    str_json = '{'
-    for x in range(0, col):
-
-        if x != 0:
-            str_json += ", "
-        str_json += '"' + key[x] + '": "' + value[x] + '"'
-    str_json += "}"
-    return json.loads(str_json)
+    return {
+        key[x]: value[x] for x in range(col)
+    }
 
 
-def screenshot(x, web_driver):
-    file_dir = "screenshots/savingcaltest/"
-    if x < 10:
-        screenshot_name = "deposit_cal_test00" + str(x) + "_fail.png_" + datetime.today().strftime("%Y%m%d%H%M") + ".png"
-    else:
-        screenshot_name = "deposit_cal_test0" + str(x) + "_fail.png_" + datetime.today().strftime("%Y%m%d%H%M") + ".png"
-
-    try:
-        if not os.path.exists(file_dir):
-            os.makedirs(file_dir)
-    except OSError:
-        print("Error: Creating directory.")
-        return False
-
-    web_driver.save_screenshot(file_dir + screenshot_name)
-
-
-def deposit_cal_button():
-    global sum_nt, sum_fail, sum_pass, total
+def deposit_cal_button(driver: webdriver, saving_cal_test: Test) -> bool:
     try:
         print("예금 계산기도 써보기 페이지 버튼 Running...")
-        driver.find_element(By.CSS_SELECTOR, "#wrap > div > div:nth-child(1) > div:nth-child(2) > div.bottom_1qFyD > div > a").click()
+        driver.find_element(By.CSS_SELECTOR,
+                            "#wrap > div > div:nth-child(1) > div:nth-child(2) > div.bottom_1qFyD > div > a").click()
         tab = driver.window_handles[1]
         driver.switch_to.window(window_name=tab)
-        total += 1
+        saving_cal_test.result_total()
 
         if driver.current_url != "https://banksalad.com/deposits/calculator":
-            sum_fail += 1
-            print("\x1b[1;31mFail\x1b[1;m - 예금 계산기도 써보기 버튼 클릭시 잘못된 url로 이동합니다.")
-            print("기대결과값: https://banksalad.com/deposits/calculator")
-            print("실제결과값: " + driver.current_url)
+            result = "예금 계산기도 써보기 버튼 클릭시 잘못된 url로 이동합니다.\n" \
+                     "기대결과값: https://banksalad.com/deposits/calculator\n" \
+                     f"실제결과값: {driver.current_url}"
+            saving_cal_test.result_fail_no_quit(driver, result)
             first_tab = driver.window_handles[0]
             driver.switch_to.window(window_name=first_tab)
             return False
 
         first_tab = driver.window_handles[0]
         driver.switch_to.window(window_name=first_tab)
-        sum_pass += 1
-        print("\x1b[1;34mPass\x1b[1;m")
+
+        Test.result_pass_no_quit(saving_cal_test)
     except NoSuchElementException:
-        sum_nt += 1
-        print("NT - 예금계산기도 써보기 버튼을 찾지 못했습니다.")
+        result = "예금계산기도 써보기 버튼을 찾지 못했습니다."
+        Test.result_nt_no_quit(saving_cal_test, result)
     return True
 
 
-def saving_buttion():
-    global sum_fail, sum_nt, sum_pass, total
+def saving_buttion(driver: webdriver, saving_cal_test: Test) -> bool:
     try:
         print("지금 추천받기 버튼 Running...")
-        driver.find_element(By.CSS_SELECTOR, "#wrap > div > div:nth-child(1) > div:nth-child(2) > div.bottom_1qFyD > a").click()
+        driver.find_element(By.CSS_SELECTOR,
+                            "#wrap > div > div:nth-child(1) > div:nth-child(2) > div.bottom_1qFyD > a").click()
         tab = driver.window_handles[2]
         driver.switch_to.window(window_name=tab)
-        total += 1
+        saving_cal_test.result_total()
 
         if driver.current_url != "https://banksalad.com/savings/questions":
-            sum_fail += 1
-            print("\x1b[1;31mFail\x1b[1;m - 지금 추천받기 버튼 클릭시 잘못된 url로 이동합니다.")
-            print("기대결과값: https://banksalad.com/savings/questions")
-            print("실제결과값: " + driver.current_url)
+            result = "지금 추천받기 버튼 클릭시 잘못된 url로 이동합니다.\n" \
+                     "기대결과값: https://banksalad.com/savings/questions\n" \
+                     f"실제결과값: {driver.current_url}"
+            saving_cal_test.result_fail_no_quit(driver, result)
             first_tab1 = driver.window_handles[0]
             driver.switch_to.window(window_name=first_tab1)
             return False
 
-        sum_pass += 1
-        print("\x1b[1;34mPass\x1b[1;m")
+        saving_cal_test.result_pass(driver)
     except NoSuchElementException:
-        sum_nt += 1
-        print("NT - 지금 추천받기 버튼을 찾지 못했습니다.")
+        result = "지금 추천받기 버튼을 찾지 못했습니다."
+        Test.result_nt_no_quit(saving_cal_test, result)
     return True
 
 
-def page_load():
-    global sum_fail, sum_pass
+def page_load(driver: webdriver, saving_cal_test: Test) -> bool:
     timeout = 10
     try:
-        element_present = EC.presence_of_element_located((By.CSS_SELECTOR, ".calculatorWrap_2RDVa > div > div:nth-child(1) > div > div > input[type=text]"))
+        element_present = EC.presence_of_element_located(
+            (By.CSS_SELECTOR, ".calculatorWrap_2RDVa > div > div:nth-child(1) > div > div > input[type=text]"))
         WebDriverWait(driver, timeout).until(element_present)
     except TimeoutException:
-        sum_fail += 1
-        print("\x1b[1;31mFail\x1b[1;m - 적금계산기 화면이 정상적으로 로드되지 않았습니다.")
+        result = "적금계산기 화면이 정상적으로 로드되지 않았습니다."
+        saving_cal_test.result_fail_no_quit(driver, result)
         return False
 
 
-def input():
-    global sum_nt, sum_fail
+def input(driver: webdriver, saving_cal_test: Test) -> bool:
+    tc = saving_cal_test.get_tc()
 
     # 입력 값 초기화
     try:
-        money = driver.find_element(By.CSS_SELECTOR, ".calculatorWrap_2RDVa > div > div:nth-child(1) > div > div > input[type=text]")
+        money = driver.find_element(By.CSS_SELECTOR,
+                                    ".calculatorWrap_2RDVa > div > div:nth-child(1) > div > div > input[type=text]")
         while True:
             if money.get_attribute("value") != '0':
                 money.send_keys(' \b')
             if money.get_attribute("value") == '0':
                 break
-        period = driver.find_element(By.CSS_SELECTOR, ".calculatorWrap_2RDVa > div > div:nth-child(2) > div > div > input[type=text]")
+        period = driver.find_element(By.CSS_SELECTOR,
+                                     ".calculatorWrap_2RDVa > div > div:nth-child(2) > div > div > input[type=text]")
         while True:
             if period.get_attribute("value") != '0':
                 period.send_keys(Keys.BACK_SPACE)
             if period.get_attribute("value") == '':
                 break
-        interest = driver.find_element(By.CSS_SELECTOR, ".calculatorWrap_2RDVa > div > div:nth-child(3) > div > div.inputForm_30zap > div > input[type=text]")
+        interest = driver.find_element(By.CSS_SELECTOR,
+                                       ".calculatorWrap_2RDVa > div > div:nth-child(3) > div > div.inputForm_30zap > div > input[type=text]")
         while True:
             if interest.get_attribute("value") != '0':
                 interest.send_keys(Keys.BACK_SPACE)
@@ -148,134 +119,153 @@ def input():
                 break
 
     except NoSuchElementException:
-        sum_nt += 1
-        print("NT - 값을 초기화하기 위한 항목을 찾지 못했습니다.")
+        result = "값을 초기화하기 위한 항목을 찾지 못했습니다."
+        Test.result_nt_no_quit(saving_cal_test, result)
         return False
 
     # 값 입력
     try:
-        money.send_keys(tc_json["납입금액"])
-        period.send_keys(tc_json["가입기간"])
-        interest.send_keys(tc_json["이자율"])
+        money.send_keys(tc["납입금액"])
+        period.send_keys(tc["가입기간"])
+        interest.send_keys(tc["이자율"])
 
     except NoSuchElementException:
-        sum_nt += 1
-        print("NT - 값을 입력하기 위한 항목을 찾지 못했습니다.")
+        result = "값을 입력하기 위한 항목을 찾지 못했습니다."
+        Test.result_nt_no_quit(saving_cal_test, result)
         return False
     return True
 
 
-def drop_select():
-    global sum_nt
+def drop_select(driver: webdriver, saving_cal_test: Test) -> bool:
+    tc = saving_cal_test.get_tc()
     # 단리/복리 버튼 선택
     try:
-        select_button = tc_json["단/복리"]
-        driver.find_element(By.CSS_SELECTOR, ".calculatorWrap_2RDVa > div > div:nth-child(3) > div > div.dropDownContainer_YrgkD > div > label").click()
-        driver.find_element(By.CSS_SELECTOR, ".calculatorWrap_2RDVa > div > div:nth-child(3) > div > div.dropDownContainer_YrgkD > div > ul > li:nth-child(" + str(select_button) + ") > button").click()
+        select_button = tc["단/복리"]
+        driver.find_element(By.CSS_SELECTOR,
+                            ".calculatorWrap_2RDVa > div > div:nth-child(3) > div > div.dropDownContainer_YrgkD > div > label").click()
+        driver.find_element(By.CSS_SELECTOR,
+                            f".calculatorWrap_2RDVa > div > div:nth-child(3) > div > div.dropDownContainer_YrgkD > div > ul > li:nth-child({str(select_button)}) > button").click()
     except NoSuchElementException:
-        sum_nt += 1
-        print("NT - 단리/복리 선택 버튼을 찾지 못했습니다.")
+        result = "단리/복리 선택 버튼을 찾지 못했습니다."
+        Test.result_nt_no_quit(saving_cal_test, result)
         return False
     return True
 
 
-def result_confirm():
-    global sum_nt, sum_fail, sum_pass
+def result_confirm(driver: webdriver, saving_cal_test: Test) -> bool:
     # 가입기간 * 납입금액과 결과의 원금이 일치하는지 확인
     try:
-        period = driver.find_element(By.CSS_SELECTOR, ".calculatorWrap_2RDVa > div > div:nth-child(2) > div > div > input[type=text]").get_attribute("value")  # 가입기간
-        money = driver.find_element(By.CSS_SELECTOR, ".calculatorWrap_2RDVa > div > div:nth-child(1) > div > div > input[type=text]").get_attribute("value").replace(",", "")  # 월 납입금액
-        result_money = driver.find_element(By.CSS_SELECTOR, ".calculatorWrap_2RDVa > div > div.resultContainer_1foXe > div:nth-child(1) > div").text.replace(",", "").replace("원", "")  # 원금
+        period = driver.find_element(By.CSS_SELECTOR,
+                                     ".calculatorWrap_2RDVa > div > div:nth-child(2) > div > div > input[type=text]").get_attribute(
+            "value")  # 가입기간
+        money = driver.find_element(By.CSS_SELECTOR,
+                                    ".calculatorWrap_2RDVa > div > div:nth-child(1) > div > div > input[type=text]").get_attribute(
+            "value").replace(",", "")  # 월 납입금액
+        result_money = driver.find_element(By.CSS_SELECTOR,
+                                           ".calculatorWrap_2RDVa > div > div.resultContainer_1foXe > div:nth-child(1) > div").text.replace(
+            ",", "").replace("원", "")  # 원금
         if int(result_money) != int(money) * int(period):
-            print("\x1b[1;31mFail\x1b[1;m - 원금이 일치하지 않습니다.")
-            print("기대결과 : " + str(int(money) * int(period)))
-            print("실제결과 : " + result_money)
-            sum_fail += 1
+            result = "원금이 일치하지 않습니다.\n" \
+                     f"기대결과 : {str(int(money) * int(period))}\n" \
+                     f"실제결과 : {result_money}"
+            saving_cal_test.result_fail_no_quit(driver, result)
             return False
 
     except NoSuchElementException:
-        sum_nt += 1
-        print("NT - 원금 확인을 위한 항목을 찾지 못했습니다.")
+        result = "원금 확인을 위한 항목을 찾지 못했습니다."
+        Test.result_nt_no_quit(saving_cal_test, result)
         return False
 
     # 만기지급금액 일치여부 확인
     try:
-        result_sum = driver.find_element(By.CSS_SELECTOR, ".calculatorWrap_2RDVa > div > div.option_blNaX.resultAmount_UmbNJ > div > div > input[type=text]").get_attribute("value").replace(",", "")  # 만기지급금액
-        interest = driver.find_element(By.CSS_SELECTOR, ".calculatorWrap_2RDVa > div > div:nth-child(3) > div > div.inputForm_30zap > div > input[type=text]").get_attribute("value")  # 입력한 이자율
-        select_button_text = driver.find_element(By.CSS_SELECTOR, ".calculatorWrap_2RDVa > div > div:nth-child(3) > div > div.dropDownContainer_YrgkD > div > label").text  # 복리, 단리 확인
+        result_sum = driver.find_element(By.CSS_SELECTOR,
+                                         ".calculatorWrap_2RDVa > div > div.option_blNaX.resultAmount_UmbNJ > div > div > input[type=text]").get_attribute(
+            "value").replace(",", "")  # 만기지급금액
+        interest = driver.find_element(By.CSS_SELECTOR,
+                                       ".calculatorWrap_2RDVa > div > div:nth-child(3) > div > div.inputForm_30zap > div > input[type=text]").get_attribute(
+            "value")  # 입력한 이자율
+        select_button_text = driver.find_element(By.CSS_SELECTOR,
+                                                 ".calculatorWrap_2RDVa > div > div:nth-child(3) > div > div.dropDownContainer_YrgkD > div > label").text  # 복리, 단리 확인
 
         monthlyInterestRate = ((float(interest) / 12 + 100) / 100)
 
         if select_button_text == '단리':
-            simple = (((int(period) * int(money)) + (int(period) * (int(period) + 1) / 2 * (float(monthlyInterestRate) - 1) * int(money))))
+            simple = (((int(period) * int(money)) + (
+                        int(period) * (int(period) + 1) / 2 * (float(monthlyInterestRate) - 1) * int(money))))
             if round(simple) != int(result_sum):
-                print("\x1b[1;31mFail\x1b[1;m - 만기지급금액이 일치하지 않습니다.")
-                print("기대결과 : " + str(simple))
-                print("실제결과 : " + result_sum)
-                sum_fail += 1
+                result = "만기지급금액이 일치하지 않습니다.\n" \
+                         f"기대결과 : {str(simple)}\n" \
+                         f"실제결과 : {result_sum}"
+                saving_cal_test.result_fail_no_quit(driver, result)
                 return False
 
         if select_button_text == '복리':
-            compound = (((int(money) * float(monthlyInterestRate) * (math.pow((float(monthlyInterestRate)), int(period)) - 1) / (float(monthlyInterestRate) - 1))))
+            compound = (((int(money) * float(monthlyInterestRate) * (
+                        math.pow((float(monthlyInterestRate)), int(period)) - 1) / (float(monthlyInterestRate) - 1))))
             if round(compound) != int(result_sum):
-                print("\x1b[1;31mFail\x1b[1;m - 만기지급금액이 일치하지 않습니다.")
-                print("기대결과 : " + str(compound))
-                print("실제결과 : " + result_sum)
-                sum_fail += 1
+                result = "만기지급금액이 일치하지 않습니다.\n" \
+                         f"기대결과 : {str(compound)}\n" \
+                         f"실제결과 : {result_sum}"
+                saving_cal_test.result_fail_no_quit(driver, result)
                 return False
 
     except NoSuchElementException:
-        sum_nt += 1
-        print("NT - 만기 지급금액 항목을 찾지 못했습니다.")
+        result = "만기 지급금액 항목을 찾지 못했습니다."
+        Test.result_nt_no_quit(saving_cal_test, result)
         return False
 
     # 이자(만기지급금액-원금) 일치여부 확인
     try:
-        result_interest = driver.find_element(By.CSS_SELECTOR, "#wrap > div > div:nth-child(1) > div:nth-child(2) > div.calculatorWrap_2RDVa > div > div.resultContainer_1foXe > div:nth-child(2) > div").text.replace(",", "").replace("원", "")  # 만기 이자
+        result_interest = driver.find_element(By.CSS_SELECTOR,
+                                              "#wrap > div > div:nth-child(1) > div:nth-child(2) > div.calculatorWrap_2RDVa > div > div.resultContainer_1foXe > div:nth-child(2) > div").text.replace(
+            ",", "").replace("원", "")  # 만기 이자
         if (int(result_sum) - int(result_money)) != int(result_interest):
-            print("\x1b[1;31mFail\x1b[1;m - 이자금액이 일치하지 않습니다.")
-            print("기대결과 : " + str(int(result_sum) - int(result_money)))
-            print("실제결과 : " + str(int(result_interest)))
-            sum_fail += 1
+            result = "이자금액이 일치하지 않습니다.\n" \
+                     f"기대결과 : {str(int(result_sum) - int(result_money))}\n" \
+                     f"실제결과 : {str(int(result_interest))}"
+            saving_cal_test.result_fail_no_quit(driver, result)
             return False
     except NoSuchElementException:
-        sum_nt += 1
-        print("NT - 이자 항목을 찾지 못했습니다.")
+        result = "이자 항목을 찾지 못했습니다."
+        Test.result_nt_no_quit(saving_cal_test, result)
         return False
     return True
 
 
-if not page_load():
-    driver.refresh()
-start = time.time()
-print("------------------------테스트 시작------------------------")
-for i in range(1, total + 1):
-    if i < 10:
-        print("savingcaltest00" + str(i) + " Running...")
-    else:
-        print("savingcaltest0" + str(i) + " Running...")
+def main():
+    saving_cal_test = Test()
+    saving_tc = doc.worksheet('적금계산기')
+    saving_cal_test.set_total(len(saving_tc.col_values(1)) - 1)
 
-    tc_json = tc_to_json()
-    if not input():
-        continue
-    if not drop_select():
-        continue
-    if not result_confirm():
-        continue
+    # 백그라운드 옵션
+    chrome_options = webdriver.ChromeOptions()
+    chrome_options.add_argument("window-size=1920x1080")
+    chrome_options.add_argument("headless")
 
-    sum_pass += 1
-    print("\x1b[1;34mPass\x1b[1;m")
+    print("------------------------테스트 시작------------------------")
+    if not page_load(driver, saving_cal_test):
+        driver.refresh()
+    for i in range(1, saving_cal_test.get_total() + 1):
 
-deposit_cal_button()
-saving_buttion()
-driver.quit()
+        saving_tc = tc_to_json(i)
+        saving_cal_test.set_no(i)
+        saving_cal_test.set_tc(saving_tc)
+        print(f"{saving_tc['TC 명']} Running...")
 
-table = BeautifulTable()
-table.column_headers = ["Total", "Pass", "Fail", "N/T"]
-table.append_row([total, sum_pass, sum_fail, sum_nt])
+        if not input(driver, saving_cal_test):
+            continue
+        if not drop_select(driver, saving_cal_test):
+            continue
+        if not result_confirm(driver, saving_cal_test):
+            continue
 
-print("------------------------테스트 결과------------------------")
-print("실행 날짜: " + datetime.today().strftime("%Y-%m-%d"))
-print("총 실행시간: " + str(int(time.time() - start)) + "s")
-print("한 케이스당 평균 실행시간: " + str(int((time.time() - start)/total)) + "s")
-print(table)
+        Test.result_pass_no_quit(saving_cal_test)
+
+    deposit_cal_button(driver, saving_cal_test)
+    saving_buttion(driver, saving_cal_test)
+    saving_cal_test.set_end()
+    result_table(saving_cal_test)
+
+
+if __name__ == "__main__":
+    main()
