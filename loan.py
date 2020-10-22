@@ -1,133 +1,95 @@
 # -*- coding: utf-8 -*-
-import os
 from time import sleep
-from beautifultable import BeautifulTable
 from selenium import webdriver
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from selenium.webdriver.common.by import By
-from datetime import datetime
-import time
 from selenium.webdriver.support.wait import WebDriverWait
 from gspreadAPI import GC, TESTCASE_LOAN_URL
-import json
+from testresult import Test, result_table
 
 doc = GC.open_by_url(TESTCASE_LOAN_URL)
-loan_tc = doc.worksheet("BEST 대출 TestCase")
-sum_pass = 0
-sum_fail = 0
-total = len(loan_tc.col_values(1)) - 1
-sum_nt = 0
-
-key = loan_tc.row_values(1)
-col = len(key)
-
-options = webdriver.ChromeOptions()
-options.add_argument('headless')
-options.add_argument('window-size=1920x1080')
-options.add_argument("disable-gpu")
+tc = doc.worksheet("BEST 대출 TestCase")
 
 
-def tc_to_json():
-    value = loan_tc.row_values(i + 1)
+def tc_to_json(i:int) -> dict:
+    key = tc.row_values(1)
+    col = len(key)
+    value = tc.row_values(i + 1)
 
-    str_json = '{'
-    for x in range(0, col):
-        if x != 0:
-            str_json += ", "
-        str_json += '"' + key[x] + '": "' + value[x] + '"'
-    str_json += "}"
-
-    return json.loads(str_json)
+    return {
+        key[x]: value[x] for x in range(col)
+    }
 
 
-def screenshot(x, web_driver):
-    file_dir = "screenshots/loantest/"
-    if x < 10:
-        screenshot_name = "loantest00" + str(x) + "_fail.png_" + datetime.today().strftime("%Y%m%d%H%M") + ".png"
-    else:
-        screenshot_name = "loantest0" + str(x) + "_fail.png_" + datetime.today().strftime("%Y%m%d%H%M") + ".png"
-
-    try:
-        if not os.path.exists(file_dir):
-            os.makedirs(file_dir)
-    except OSError:
-        print("Error: Creating directory.")
-        return False
-
-    web_driver.save_screenshot(file_dir + screenshot_name)
-
-
-def loan_select(i, web_driver):
-    global sum_nt, sum_fail
-
+def loan_select(driver: webdriver, loan_test: Test) -> bool:
+    tc = loan_test.get_tc()
     # 대출 금액 버튼 선택
     try:
-        web_driver.find_element(By.XPATH, "//button[@class='tag_KCNXn' and contains(text(), '" + str(tc_json["대출금액"]) + "')]").click()
+        loan = str(tc["대출금액"])
+        driver.find_element(By.XPATH, f"//button[@class='tag_KCNXn' and contains(text(), '{loan}')]").click()
         sleep(1)
     except NoSuchElementException:
-        sum_nt += 1
-        print("NT - 희망 대출 금액 선택 버튼을 찾지 못했습니다.")
+        result = "희망 대출 금액 선택 버튼을 찾지 못했습니다."
+        loan_test.result_nt(driver, result)
         return False
 
     # 선택한 대출 금액이 입력항목에 정상 노출되는지 확인
     try:
-        loan_result = driver.find_element(By.CSS_SELECTOR,".questions_3ScUv > li:nth-child(1) > .value_3k1fw").text.replace(",", "").replace("만원", "")
-        loan_input = web_driver.find_element(By.CSS_SELECTOR, ".amount_3x6iq > .desktop_1HAhS > div > input").get_attribute('value')
         sleep(2)
+        loan_result = driver.find_element(By.CSS_SELECTOR,".questions_3ScUv > li:nth-child(1) > .value_3k1fw").text.replace(",", "").replace("만원", "")
+        loan_input = driver.find_element(By.CSS_SELECTOR, ".amount_3x6iq > .desktop_1HAhS > div > input").get_attribute('value')
         if loan_input != loan_result:
-            sum_fail += 1
-            print("\x1b[1;31mFail\x1b[1;m - 희망 대출 금액 버튼을 클릭했을 때, 입력 결과에 해당 금액이 정상적으로 노출되지 않습니다.")  # Fail 빨간색 글씨
-            print("입력 값: " + str(loan_input) + ", 결과 값: " + str(loan_result))
-            screenshot(i, driver)
+            result = "희망 대출 금액 버튼을 클릭했을 때, 입력 결과에 해당 금액이 정상적으로 노출되지 않습니다.\n"\
+                f"입력 값: {str(loan_input)}, 결과 값: {str(loan_result)}"
+            loan_test.result_fail(driver, result)
             return False
     except NoSuchElementException:
-        sum_nt += 1
-        print("NT - 희망 대출 금액 버튼을 클릭했을 때, 입력 결과 항목을 찾지 못했습니다.")
+        result = "희망 대출 금액 버튼을 클릭했을 때, 입력 결과 항목을 찾지 못했습니다."
+        loan_test.result_nt(driver, result)
         return False
     return True
 
 
-def loan_credit(i, web_driver):
-    global sum_nt, sum_fail
+def loan_credit(driver: webdriver, loan_test: Test) -> bool:
+    tc = loan_test.get_tc()
 
     # 신용등급 선택
     try:
-        web_driver.find_element(By.CSS_SELECTOR, "label > span").click()
+        credit = str(tc["신용등급"])
+        driver.find_element(By.CSS_SELECTOR, "label > span").click()
         sleep(1)
-        web_driver.find_element(By.XPATH, "//span[@class='item_1x2gS' and contains(text(), '" + str(tc_json["신용등급"]) + "')]").click()
+        driver.find_element(By.XPATH, f"//span[@class='item_1x2gS' and contains(text(), '{credit}')]").click()
     except NoSuchElementException:
-        sum_nt += 1
-        print("NT - 신용등급 선택창을 찾지 못했습니다.")
+        result = "신용등급 선택창을 찾지 못했습니다."
+        loan_test.result_nt(driver, result)
         return False
 
     # 신용등급 입력 결과 확인
     try:
-        creditlevel = web_driver.find_element(By.CSS_SELECTOR, "label > span").text
-        credit_result = web_driver.find_element(By.CSS_SELECTOR, ".questions_3ScUv > li:nth-child(2) > .value_3k1fw").text
+        creditlevel = driver.find_element(By.CSS_SELECTOR, "label > span").text
+        credit_result = driver.find_element(By.CSS_SELECTOR, ".questions_3ScUv > li:nth-child(2) > .value_3k1fw").text
         if str(credit_result) != str(creditlevel):
-            sum_fail += 1
-            print("\x1b[1;31mFail\x1b[1;m - 신용등급 선택 시, 입력 결과에 선택 사항이 정상적으로 노출되지 않습니다.")  # Fail 빨간색 글씨
-            print("입력: " + str(creditlevel) + ", 결과: " + str(credit_result))
-            screenshot(i, driver)
+            result = "신용등급 선택 시, 입력 결과에 선택 사항이 정상적으로 노출되지 않습니다.\n"\
+                     f"입력: {str(creditlevel)}, 결과: {str(credit_result)}"
+            loan_test.result_fail(driver, result)
             return False
     except NoSuchElementException:
-        sum_nt += 1
-        print("NT - 신용등급 선택창과 입력 결과 항목을 찾지 못했습니다.")
+        result = "신용등급 선택창과 입력 결과 항목을 찾지 못했습니다."
+        loan_test.result_nt(driver, result)
         return False
 
     return True
 
 
-def loan_job(i, web_driver):
-    global sum_nt, sum_fail
-
+def loan_job(driver: webdriver, loan_test: Test) -> bool:
+    tc = loan_test.get_tc()
     # 직업 선택
     try:
-        web_driver.find_element(By.CSS_SELECTOR, ":nth-child(6) > div > button").click()
+        driver.find_element(By.CSS_SELECTOR, ":nth-child(6) > div > button").click()
     except NoSuchElementException:
-        sum_nt += 1
-        print("NT - 직업 선택 버튼을 선택하지 못했습니다.")
+        result = "직업 선택 버튼을 선택하지 못했습니다."
+        loan_test.result_nt(driver, result)
         return False
 
     # 직업 선택 팝업이 5초 안에 노출되지 않으면 fail
@@ -137,116 +99,76 @@ def loan_job(i, web_driver):
         WebDriverWait(driver, timeout).until(element_present)
 
     except TimeoutException:
-        sum_fail += 1
-        screenshot(i, driver)
-        print("\x1b[1;31mFail\x1b[1;m - 직업 선택 팝업이 정상적으로 노출되지 않았습니다.")
-        driver.quit()
+        result = "직업 선택 팝업이 정상적으로 노출되지 않았습니다."
+        Test.result_fail(driver, result)
         return False
 
     try:
-        driver.find_element(By.XPATH, "//label[contains(text(), '" + tc_json["직업"] + "')]").location_once_scrolled_into_view
-        driver.find_element(By.XPATH, "//label[contains(text(), '" + tc_json["직업"] + "')]").click()
+        job = tc["직업"]
+        driver.find_element(By.XPATH, f"//label[contains(text(), '{job}')]").location_once_scrolled_into_view
+        driver.find_element(By.XPATH, f"//label[contains(text(), '{job}')]").click()
         driver.find_element(By.CSS_SELECTOR, ".accept_3yeys").click()
 
     except NoSuchElementException:
-        sum_nt += 1
-        print("NT - 직업 선택 버튼을 찾지 못했습니다.")
+        result = "직업 선택 버튼을 찾지 못했습니다."
+        loan_test.result_nt(driver, result)
         return False
 
     # 선택한 직업이 입력항목에 정상 노출되는지 확인
     try:
-        job_name = web_driver.find_element(By.CSS_SELECTOR, ":nth-child(6) > div > button").text
-        job_result = web_driver.find_element(By.CSS_SELECTOR, ".questions_3ScUv > li:nth-child(3) > .value_3k1fw").text
+        job_name = driver.find_element(By.CSS_SELECTOR, ":nth-child(6) > div > button").text
+        job_result = driver.find_element(By.CSS_SELECTOR, ".questions_3ScUv > li:nth-child(3) > .value_3k1fw").text
         if str(job_name) != str(job_result):
-            print("\x1b[1;31mFail\x1b[1;m - 직업 선택 시, 입력 결과에 선택 사항이 정상적으로 노출되지 않습니다.")  # Fail 빨간색 글씨
-            print("선택: " + str(job_name) + ", 결과: " + str(job_result))
-            screenshot(i, driver)
+            result = "직업 선택 시, 입력 결과에 선택 사항이 정상적으로 노출되지 않습니다.\n"\
+                f"선택: {str(job_name)}, 결과: {str(job_result)}"
+            loan_test.result_fail(driver, result)
             return False
     except NoSuchElementException:
-        sum_nt += 1
-        print("NT - 직업을 선택했을 때, 입력 결과 항목을 찾지 못했습니다.")
+        result = "직업을 선택했을 때, 입력 결과 항목을 찾지 못했습니다."
+        loan_test.result_nt(driver, result)
         return False
 
     return True
 
 
-def loan_income(i, web_driver):
-    global sum_nt, sum_fail
+def loan_income(driver: webdriver, loan_test: Test) -> bool:
+    tc = loan_test.get_tc()
 
     # 연소득 선택
     try:
-        web_driver.find_element(By.XPATH, "//button[@class='tag_G72-i' and contains(text(), '" + str(tc_json["연소득"]) + "')]").click()
+        income = str(tc["연소득"])
+        driver.find_element(By.XPATH, f"//button[@class='tag_G72-i' and contains(text(), '{income}')]").click()
 
     except NoSuchElementException:
-        sum_nt += 1
-        print("NT - 연소득 선택 항목을 찾지 못했습니다.")
+        result = "연소득 선택 항목을 찾지 못했습니다."
+        loan_test.result_nt(driver, result)
         return False
 
     # 선택한 연소득이 입력항목에 정상 노출되는지 확인
     try:
-        input_income = int(web_driver.find_element(By.CSS_SELECTOR, ".amount_1_jHL > .desktop_1HAhS > div > input").get_attribute('value'))
-        income_result = web_driver.find_element(By.CSS_SELECTOR, ".questions_3ScUv > li:nth-child(4) > .value_3k1fw").text.replace(",", "")
+        input_income = int(driver.find_element(By.CSS_SELECTOR, ".amount_1_jHL > .desktop_1HAhS > div > input").get_attribute('value'))
+        income_result = driver.find_element(By.CSS_SELECTOR, ".questions_3ScUv > li:nth-child(4) > .value_3k1fw").text.replace(",", "")
         income_result = income_result.replace("만원", "")
         if input_income != int(income_result):
-            print("\x1b[1;31mFail\x1b[1;m - 연소득 선택 시, 입력 결과에 선택 사항이 정상적으로 노출되지 않습니다.")  # Fail 빨간색 글씨
-            print("입력값: " + str(input_income) + ", 결과값: " + str(income_result))
-            screenshot(i, driver)
+            result = "연소득 선택 시, 입력 결과에 선택 사항이 정상적으로 노출되지 않습니다.\n"\
+                f"입력값: {str(input_income)}, 결과값: {str(income_result)}"
+            loan_test.result_fail(driver, result)
             return False
     except NoSuchElementException:
-        sum_nt += 1
-        print("NT - 연소득을 선택했을 때, 입력 결과를 찾지 못했습니다.")
-        return False
-    return True
-
-
-# 선택한 희망 대출금액이 상단 금액과 일치하는지 확인
-def loan_hope(i, web_driver):
-    global sum_nt, sum_fail
-
-    try:
-        loan_text = web_driver.find_element(By.CSS_SELECTOR, "#amount").get_attribute('value')
-        if get_loan_result != loan_text:
-            print("\x1b[1;31mFail\x1b[1;m - 희망 대출금액이 결과 페이지 상단 금액과 일치하지 않습니다.")  # Fail 빨간색 글씨
-            print("기대결과값: " + str(get_loan_result) + ", 실제결과값: " + str(loan_text))
-            screenshot(i, driver)
-            return False
-
-    except NoSuchElementException:
-        sum_nt += 1
-        print("NT - 결과 페이지 상단 금액을 찾지 못했습니다.")
-        return False
-    return True
-
-
-# 예상한도가 결과페이지 첫번째 상품에 노출되는 금액과 동일한지 확인
-def expect_limit():
-    global sum_nt
-    try:
-        loan_expect_result_list = driver.find_element(By.CSS_SELECTOR, ".calculatedInterest_2MmE7").text.replace(",", "").replace("예상한도 ", "").replace("만원", "")  # 결과 페이지의 첫번째 상품 한도
-        sleep(1)
-        if int(loan_expect) != int(loan_expect_result_list):
-            print("\x1b[1;31mFail\x1b[1;m - 희망 대출금액이 결과 페이지 상단 금액과 일치하지 않습니다.")  # Fail 빨간색 글씨
-            print("기대결과값: " + str(loan_expect) + ", 실제결과값: " + str(loan_expect_result_list))
-            screenshot(i, driver)
-            return False
-    except NoSuchElementException:
-        sum_nt += 1
-        print("NT - 결과페이지 첫 번째 상품의 예상한도를 찾지 못했습니다.")
+        result = "연소득을 선택했을 때, 입력 결과를 찾지 못했습니다."
+        loan_test.result_nt(driver, result)
         return False
     return True
 
 
 # 결과 리스트 로드 timeout 시 fail처리
-def load_loan():
-    global sum_nt, sum_fail
+def load_loan(driver: webdriver, loan_test: Test) -> bool:
     wait = 0
     for x in range(1, 4):
         while True:
-            # 20번 기다렸는데도 load되지 않았을때, timeout처리
             if wait > 20:
-                screenshot(i, driver)
-                print("\x1b[1;31mFail\x1b[1;m - 결과 리스트 로드 timeout")
-                sum_fail += 1
+                result = "결과 리스트 로드 timeout"
+                loan_test.result_fail(driver, result)
                 return False
             elements = driver.find_elements(By.CSS_SELECTOR, ".resultItem_2jgVP")
             num = len(elements)
@@ -265,8 +187,8 @@ def load_loan():
 
 
 # 상품 상세페이지 확인
-def confirm_detail():
-    global sum_fail, sum_nt
+def confirm_detail(driver: webdriver, loan_test: Test) -> bool:
+
     num = len(driver.find_elements(By.CSS_SELECTOR, ".resultWrap_1ZJb- > ol:nth-child(2) > li"))
     wait = 0
     if num > 2:
@@ -274,9 +196,8 @@ def confirm_detail():
     for x in range(0, num):
         while True:
             if wait > 20:
-                screenshot(i, driver)
-                print("\x1b[1;31mFail\x1b[1;m - 결과 리스트 로드 timeout")
-                sum_fail += 1
+                result = "결과 리스트 로드 timeout"
+                loan_test.result_fail(driver, result)
                 return False
             lst_loan = driver.find_elements(By.CSS_SELECTOR, ".resultItem_2jgVP")
 
@@ -287,7 +208,7 @@ def confirm_detail():
             wait += 1
 
         loan_name1 = driver.find_elements(By.CSS_SELECTOR, ".headerText_SOgCc > h1")[x].text.replace("고정금리", "").replace("변동금리", "")
-        loan_detail = driver.find_element(By.CSS_SELECTOR, ".resultWrap_1ZJb- > ol > li:nth-child(" + str(x + 1) + ") > div > div.body_cYC3y > div > div.linkButtons_3eD-d > a.linkDetail_2YWx8.linkButton_3mX1p")
+        loan_detail = driver.find_element(By.CSS_SELECTOR, f".resultWrap_1ZJb- > ol > li:nth-child({str(x + 1)}) > div > div.body_cYC3y > div > div.linkButtons_3eD-d > a.linkDetail_2YWx8.linkButton_3mX1p")
         lst_loan[x].location_once_scrolled_into_view
         sleep(1)
         loan_detail.click()
@@ -298,28 +219,24 @@ def confirm_detail():
             element_present = EC.presence_of_element_located((By.CSS_SELECTOR, ".head_25kNF > h1"))
             WebDriverWait(driver, timeout).until(element_present)
         except TimeoutException:
-            sum_fail += 1
-            screenshot(i, driver)
-            print("\x1b[1;31mFail\x1b[1;m - 상품 상세 페이지가 정상적으로 로드되지 않았습니다.")
-            driver.quit()
+            result = "상품 상세 페이지가 정상적으로 로드되지 않았습니다."
+            loan_test.result_fail(driver, result)
             return False
 
         try:
             loan_name2 = driver.find_element(By.CSS_SELECTOR, ".head_25kNF > h1").text
 
             if loan_name1 != loan_name2:
-                screenshot(i, driver)
-                sum_fail += 1
-                print("\x1b[1;31mFail\x1b[1;m - 잘못된 상세페이지로 이동")
-                print("기대결과값: " + loan_name1 + "의 상세페이지, 실제결과값: " + loan_name2 + "의 상세페이지")
+                result = "잘못된 상세페이지로 이동\n"\
+                    f"기대결과값: {loan_name1}의 상세페이지, 실제결과값: {loan_name2}의 상세페이지"
+                loan_test.result_fail(driver, result)
                 return False
 
             # 결과리스트가 10초동안 로드되지 않은 경우 fail 처리
             wait = 0
             if wait > 10:
-                screenshot(i, driver)
-                print("\x1b[1;31mFail\x1b[1;m - 결과 리스트 로드 timeout")
-                sum_fail += 1
+                result = "결과 리스트 로드 timeout"
+                loan_test.result_fail(driver, result)
                 return False
 
             if len(driver.find_elements(By.CLASS_NAME, "resultItem_2jgVP")) > 0:
@@ -328,24 +245,22 @@ def confirm_detail():
             driver.find_element(By.LINK_TEXT, "결과 리스트로").click()
             sleep(2)
             if driver.current_url != "https://banksalad.com/credit-loans/profits":
-                screenshot(i, driver)
-                sum_fail += 1
-                print("\x1b[1;31mFail\x1b[1;m - 결과 리스트로 버튼 클릭시 잘못된 url로 이동")
-                print("기대결과값: https://banksalad.com/credit-loans/profits")
-                print("실제결과값: " + driver.current_url)
+                result = "결과 리스트로 버튼 클릭시 잘못된 url로 이동\n"\
+                    "기대결과값: https://banksalad.com/credit-loans/profits\n"\
+                    f"실제결과값: {driver.current_url}"
+                loan_test.result_fail(driver, result)
                 return False
 
         except NoSuchElementException:
-            sum_nt += 1
-            print("N/T - 상품 상세보기 페이지 내 결과 리스트로 버튼 또는 상품 요소를 찾지못함")
+            result = "상품 상세보기 페이지 내 결과 리스트로 버튼 또는 상품 요소를 찾지못함"
+            loan_test.result_nt(driver, result)
             return False
     return True
 
 
 # 금리 낮은 순 선택
-def confirm_filter1(n):
-    global sum_nt, sum_fail
-
+def confirm_filter1(driver: webdriver, loan_test: Test) -> bool:
+    n = len(driver.find_elements(By.CSS_SELECTOR, ".resultWrap_1ZJb- > ol:nth-child(2) > li"))
     try:
         sleep(1)
         driver.find_element(By.CSS_SELECTOR, ".desktop_1HAhS > ul > li:nth-child(3) > div").click()
@@ -353,24 +268,23 @@ def confirm_filter1(n):
 
         for i in range(1, n):
             sleep(2)
-            result_list = driver.find_element(By.CSS_SELECTOR, ".resultWrap_1ZJb- > ol > li:nth-child(" + str(i) + ") > div > div.body_cYC3y > div > div.info_19W26 > dl  dd.interestInfo_r017q > ul > li:nth-child(1) > div > strong").text.replace("평균 ", "").replace("%", "")
-            result_list2 = driver.find_element(By.CSS_SELECTOR, ".resultWrap_1ZJb- > ol > li:nth-child(" + str(i + 1) + ") > div > div.body_cYC3y > div > div.info_19W26 > dl  dd.interestInfo_r017q > ul > li:nth-child(1) > div > strong").text.replace("평균 ", "").replace("%", "")
+            result_list = driver.find_element(By.CSS_SELECTOR, f".resultWrap_1ZJb- > ol > li:nth-child({str(i)}) > div > div.body_cYC3y > div > div.info_19W26 > dl  dd.interestInfo_r017q > ul > li:nth-child(1) > div > strong").text.replace("평균 ", "").replace("%", "")
+            result_list2 = driver.find_element(By.CSS_SELECTOR, f".resultWrap_1ZJb- > ol > li:nth-child({str(i + 1)}) > div > div.body_cYC3y > div > div.info_19W26 > dl  dd.interestInfo_r017q > ul > li:nth-child(1) > div > strong").text.replace("평균 ", "").replace("%", "")
             if float(result_list) > float(result_list2):
-                print("\x1b[1;31mFail\x1b[1;m - 금리 낮은 순 필터가 정상적으로 동작하지 않습니다.")
-                sum_fail += 1
+                result = "금리 낮은 순 필터가 정상적으로 동작하지 않습니다."
+                loan_test.result_fail(driver, result)
                 return False
 
     except NoSuchElementException:
-        sum_nt += 1
-        print("NT - 금리 낮은 순 필터 관련 항목을 찾지 못했습니다.")
+        result = "금리 낮은 순 필터 관련 항목을 찾지 못했습니다."
+        loan_test.result_nt(driver, result)
         return False
     return True
 
 
 # 한도 높은 순 선택
-def confirm_filter2(n):
-    global sum_fail, sum_nt
-
+def confirm_filter2(driver: webdriver, loan_test: Test) -> bool:
+    n = len(driver.find_elements(By.CSS_SELECTOR, ".resultWrap_1ZJb- > ol:nth-child(2) > li"))
     try:
         sleep(1)
         driver.find_element(By.CSS_SELECTOR, ".desktop_1HAhS > ul > li:nth-child(3) > div").click()
@@ -378,186 +292,211 @@ def confirm_filter2(n):
 
         for i in range(1, n):
             sleep(2)
-            result_list = driver.find_element(By.CSS_SELECTOR, ".resultWrap_1ZJb- > ol > li:nth-child(" + str(i) + ") > div > div.body_cYC3y > div > div.info_19W26 > dl > dd.interestInfo_r017q > ul > li.calculatedInterestWrap_1QJa1 > span.calculatedInterest_2MmE7").text.replace("예상한도 ", "").replace(",", "").replace("만원", "")
-            result_list2 = driver.find_element(By.CSS_SELECTOR, ".resultWrap_1ZJb- > ol > li:nth-child(" + str(i + 1) + ") > div > div.body_cYC3y > div > div.info_19W26 > dl > dd.interestInfo_r017q > ul > li.calculatedInterestWrap_1QJa1 > span.calculatedInterest_2MmE7").text.replace("예상한도 ", "").replace(",", "").replace("만원", "")
+            result_list = driver.find_element(By.CSS_SELECTOR, f".resultWrap_1ZJb- > ol > li:nth-child({str(i)}) > div > div.body_cYC3y > div > div.info_19W26 > dl > dd.interestInfo_r017q > ul > li.calculatedInterestWrap_1QJa1 > span.calculatedInterest_2MmE7").text.replace("예상한도 ", "").replace(",", "").replace("만원", "")
+            result_list2 = driver.find_element(By.CSS_SELECTOR, f".resultWrap_1ZJb- > ol > li:nth-child({str(i + 1)}) > div > div.body_cYC3y > div > div.info_19W26 > dl > dd.interestInfo_r017q > ul > li.calculatedInterestWrap_1QJa1 > span.calculatedInterest_2MmE7").text.replace("예상한도 ", "").replace(",", "").replace("만원", "")
             if int(result_list) < int(result_list2):
-                print("\x1b[1;31mFail\x1b[1;m - 한도 높은 순 필터가 정상적으로 동작하지 않습니다.")
-                sum_fail += 1
+                result = "한도 높은 순 필터가 정상적으로 동작하지 않습니다."
+                loan_test.result_fail(driver, result)
                 return False
 
     except NoSuchElementException:
-        sum_nt += 1
-        print("NT - 한도 높은 순 필터 관련 항목을 찾지 못했습니다.")
+        result = "한도 높은 순 필터 관련 항목을 찾지 못했습니다."
+        loan_test.result_nt(driver, result)
         return False
     return True
 
 
 # 최장 기간 순 선택
-def confirm_filter3(n):
-    global sum_nt, sum_fail
+def confirm_filter3(driver: webdriver, loan_test: Test) -> bool:
+    n = len(driver.find_elements(By.CSS_SELECTOR, ".resultWrap_1ZJb- > ol:nth-child(2) > li"))
     try:
         sleep(1)
         driver.find_element(By.CSS_SELECTOR, ".desktop_1HAhS > ul > li:nth-child(3) > div").click()
-        driver.find_element(By.CSS_SELECTOR,
-                            ".desktop_1HAhS > ul > li:nth-child(3) > div > ul > li:nth-child(3) > button").click()
+        driver.find_element(By.CSS_SELECTOR, ".desktop_1HAhS > ul > li:nth-child(3) > div > ul > li:nth-child(3) > button").click()
 
         for i in range(1, n):
             sleep(2)
-            result_list = driver.find_element(By.CSS_SELECTOR, ".resultWrap_1ZJb- > ol > li:nth-child(" + str(i) + ") > div > div.body_cYC3y > div > div.info_19W26 > dl > dd:nth-child(4) > ul > li > span").text
-            result_list2 = driver.find_element(By.CSS_SELECTOR, ".resultWrap_1ZJb- > ol > li:nth-child(" + str(i + 1) + ") > div > div.body_cYC3y > div > div.info_19W26 > dl > dd:nth-child(4) > ul > li > span").text
+            result_list = driver.find_element(By.CSS_SELECTOR, f".resultWrap_1ZJb- > ol > li:nth-child({str(i)}) > div > div.body_cYC3y > div > div.info_19W26 > dl > dd:nth-child(4) > ul > li > span").text
+            result_list2 = driver.find_element(By.CSS_SELECTOR, f".resultWrap_1ZJb- > ol > li:nth-child({str(i + 1)}) > div > div.body_cYC3y > div > div.info_19W26 > dl > dd:nth-child(4) > ul > li > span").text
             split1 = result_list.split('~', 2)
             split2 = split1[1].split('개월', 2)
             split3 = result_list2.split('~', 2)
             split4 = split3[1].split('개월', 2)
             if int(split2[0]) < int(split4[0]):
-                print("\x1b[1;31mFail\x1b[1;m - 한도 높은 순 필터가 정상적으로 동작하지 않습니다.")
-                sum_fail += 1
+                result = "한도 높은 순 필터가 정상적으로 동작하지 않습니다."
+                loan_test.result_fail(driver, result)
                 return False
 
     except NoSuchElementException:
-        sum_nt += 1
-        print("NT - 최장기간 순 필터 관련 항목을 찾지 못했습니다.")
+        result = "최장기간 순 필터 관련 항목을 찾지 못했습니다."
+        loan_test.result_nt(driver, result)
         return False
     return True
 
 
-def result_credit():
-    global sum_nt, sum_fail
+def result_credit(driver: webdriver, loan_test: Test) -> bool:
     # 선택한 신용등급과 결과페이지 상단 신용등급 일치 여부 확인
     try:
         result_creditlevel = driver.find_element(By.CSS_SELECTOR,".desktop_1HAhS > ul > li:nth-child(1) > div > ""label").text
+        creditlevel = driver.find_element(By.CSS_SELECTOR, ".questions_3ScUv > li:nth-child(2) > .value_3k1fw").text
         if creditlevel != result_creditlevel:
-            sum_fail += 1
-            print("\x1b[1;31mFail\x1b[1;m - 신용등급이 결과 페이지 상단과 일치하지 않습니다.")
-            print("기대결과값: " + str(creditlevel) + ", 실제결과값: " + str(result_creditlevel))
-            screenshot(i, driver)
+            result = "신용등급이 결과 페이지 상단과 일치하지 않습니다.\n"\
+                f"기대결과값: {str(creditlevel)}, 실제결과값: {str(result_creditlevel)}"
+            loan_test.result_fail(driver, result)
             return False
     except NoSuchElementException:
-        sum_nt += 1
-        print("NT - 결과페이지 상단 신용등급을 찾지 못했습니다.")
-        driver.quit()
+        result = "결과페이지 상단 신용등급을 찾지 못했습니다."
+        loan_test.result_nt(driver, result)
         return False
     return True
 
 
-start = time.time()
-print("------------------------테스트 시작------------------------")
-for i in range(1, total + 1):
-    if i < 10:
-        print("loantest00" + str(i) + " Running...")
-    else:
-        print("loantest0" + str(i) + " Running...")
+def main():
+    loan_test = Test()
+    tc = doc.worksheet('대출 Result TestCase')
+    loan_test.set_total(len(tc.col_values(1)) - 1)
 
-    driver = webdriver.Chrome('/usr/local/bin/chromedriver', options=options)
+    # 백그라운드 옵션
+    chrome_options = webdriver.ChromeOptions()
+    chrome_options.add_argument("window-size=1920x1080")
+    chrome_options.add_argument("headless")
 
-    driver.get('https://banksalad.com/credit-loans/questions')
+    print("------------------------테스트 시작------------------------")
+    for i in range(1, loan_test.get_total() + 1):
 
-    tc_json = tc_to_json()
+        tc = tc_to_json(i)
+        loan_test.set_no(i)
+        loan_test.set_tc(tc)
+        print(f"{tc['TC 명']} Running...")
 
-    if not loan_select(i, driver):
-        driver.quit()
-        continue
+        driver = webdriver.Chrome('C:/Users/cehwang/PycharmProjects/Selenium/chromedriver.exe')
+        driver.get('https://banksalad.com/credit-loans/questions')
 
-    get_loan_result = driver.find_element(By.CSS_SELECTOR,".questions_3ScUv > li:nth-child(1) > .value_3k1fw").text.replace(",", "").replace("만원", "")
+        if not loan_select(driver, loan_test):
+            driver.quit()
+            continue
 
-    if not loan_credit(i, driver):
-        driver.quit()
-        continue
+        get_loan_result = driver.find_element(By.CSS_SELECTOR,".questions_3ScUv > li:nth-child(1) > .value_3k1fw").text.replace(",", "").replace("만원", "")
 
-    if not loan_job(i, driver):
-        driver.quit()
-        continue
+        if not loan_credit(driver, loan_test):
+            driver.quit()
+            continue
 
-    if not loan_income(i, driver):
-        driver.quit()
-        continue
+        if not loan_job(driver, loan_test):
+            driver.quit()
+            continue
 
-    sleep(1)
+        if not loan_income(driver, loan_test):
+            driver.quit()
+            continue
 
-    # 희망 대출 금액, 예상 대출 한도
-    creditlevel = driver.find_element(By.CSS_SELECTOR, ".questions_3ScUv > li:nth-child(2) > .value_3k1fw").text
-    loan_expect = driver.find_element(By.CSS_SELECTOR, "div.preview_Qee0B > div.foot_2aDGD > section > span.resultValue_rynW5 > span").text.replace(",", "").replace("예상 대출한도 ", "").replace("만원", "")
-
-    try:
-        driver.find_element(By.LINK_TEXT, "결과보기").click()
         sleep(1)
 
-    except NoSuchElementException:
-        print("N/T - \'결과보기\' 버튼을 찾지 못했습니다.")
-        sum_nt += 1
-        driver.quit()
-        continue
-
-    # 희망 대출금액이 예상 한도보다 낮은 경우 노출되는 alert 처리
-    if int(get_loan_result) > int(loan_expect):
-
+        # 희망 대출 금액, 예상 대출 한도
+        loan_expect = driver.find_element(By.CSS_SELECTOR, "div.preview_Qee0B > div.foot_2aDGD > section > span.resultValue_rynW5 > span").text.replace(",", "").replace("예상 대출한도 ", "").replace("만원", "")
+        creditlevel = driver.find_element(By.CSS_SELECTOR, ".questions_3ScUv > li:nth-child(2) > .value_3k1fw").text
         try:
-            alert_switch = driver.switch_to.alert
-            alert_text = alert_switch.text.replace(",", "")  # alert에 노출되는 문구
-            alert_switch.accept()
+            driver.find_element(By.LINK_TEXT, "결과보기").click()
             sleep(1)
-            loan_text = int(driver.find_element(By.CSS_SELECTOR, "#amount").get_attribute('value'))  # 결과 페이지 상단 노출 금액
 
-            # 결과 상단 희망금액이 alert 워딩에 포함되는지 확인
-            if str(loan_text) not in alert_text:
-                sum_fail += 1
-                print("\x1b[1;31mFail\x1b[1;m - 희망 대출금액이 결과 페이지 상단 금액과 일치하지 않습니다.")  # Fail 빨간색 글씨
-                print("\x1b[1;31malert 워딩에\x1b[1;m " + str(alert_text) + "\x1b[1;31m결과 페이지 상단 금액\x1b[1;m " + str(loan_text) + " 이 포함되지 않습니다.")
-                screenshot(i, driver)
+        except NoSuchElementException:
+            result = "\'결과보기\' 버튼을 찾지 못했습니다."
+            loan_test.result_nt(driver, result)
+            continue
+
+        # 희망 대출금액이 예상 한도보다 낮은 경우 노출되는 alert 처리
+        if int(get_loan_result) > int(loan_expect):
+
+            try:
+                alert_switch = driver.switch_to.alert
+                alert_text = alert_switch.text.replace(",", "")  # alert에 노출되는 문구
+                alert_switch.accept()
+                sleep(1)
+                loan_text = int(driver.find_element(By.CSS_SELECTOR, "#amount").get_attribute('value'))  # 결과 페이지 상단 노출 금액
+
+                # 결과 상단 희망금액이 alert 워딩에 포함되는지 확인
+                if str(loan_text) not in alert_text:
+                    result = "희망 대출금액이 결과 페이지 상단 금액과 일치하지 않습니다.\n"\
+                        f"alert 워딩에 {str(alert_text)} 결과 페이지 상단 금액 {str(loan_text)}이 포함되지 않습니다."
+                    loan_test.result_fail(driver, result)
+                    continue
+
+            except NoSuchElementException:
+                result = "\'결과페이지 상단 금액\' 항목을 찾지 못했습니다."
+                loan_test.result_nt(driver, result)
+                continue
+
+        else:
+            # 희망 대출금액이 예상한도보다 높은 경우 동작
+            sleep(1)
+            # 선택한 희망 대출금액이 상단 금액과 일치하는지 확인
+            try:
+                loan_text = driver.find_element(By.CSS_SELECTOR, "#amount").get_attribute('value')
+                if get_loan_result != loan_text:
+                    result = "희망 대출금액이 결과 페이지 상단 금액과 일치하지 않습니다.\n" \
+                             f"기대결과값: {str(get_loan_result)}, 실제결과값: {str(loan_text)}"
+                    loan_test.result_fail(driver, result)
+                    continue
+
+            except NoSuchElementException:
+                result = "결과 페이지 상단 금액을 찾지 못했습니다."
+                loan_test.result_nt(driver, result)
+                continue
+
+        # 예상한도가 결과페이지 첫번째 상품에 노출되는 금액과 동일한지 확인
+        try:
+            sleep(2)
+            loan_expect_result_list = driver.find_element(By.CSS_SELECTOR, ".calculatedInterest_2MmE7").text.replace(",", "").replace("예상한도 ", "").replace("만원", "")  # 결과 페이지의 첫번째 상품 한도
+
+            if int(loan_expect) != int(loan_expect_result_list):
+                result = "희망 대출금액이 결과 페이지 상단 금액과 일치하지 않습니다.\n" \
+                         f"기대결과값: {str(loan_expect)}, 실제결과값: {str(loan_expect_result_list)}"
+                loan_test.result_fail(driver, result)
                 continue
 
         except NoSuchElementException:
-            print("N/T - \'결과페이지 상단 금액\' 항목을 찾지 못했습니다.")
-            sum_nt += 1
+            result = "결과페이지 첫 번째 상품의 예상한도를 찾지 못했습니다."
+            loan_test.result_nt(driver, result)
+            continue
+
+        # 선택한 신용등급과 결과페이지 상단 신용등급 일치 여부 확인
+        try:
+            result_creditlevel = driver.find_element(By.CSS_SELECTOR, ".desktop_1HAhS > ul > li:nth-child(1) > div > ""label").text
+            if creditlevel != result_creditlevel:
+                result = "신용등급이 결과 페이지 상단과 일치하지 않습니다.\n" \
+                            f"기대결과값: {str(creditlevel)}, 실제결과값: {str(result_creditlevel)}"
+                loan_test.result_fail(driver, result)
+                continue
+
+        except NoSuchElementException:
+            result = "결과페이지 상단 신용등급을 찾지 못했습니다."
+            loan_test.result_nt(driver, result)
+            continue
+
+        if not load_loan(driver, loan_test):
             driver.quit()
             continue
 
-    else:
-        # 희망 대출금액이 예상한도보다 높은 경우 동작
-        sleep(1)
-        if not loan_hope(i, driver):
+        if not confirm_detail(driver, loan_test):
             driver.quit()
             continue
 
-    if not expect_limit():
-        driver.quit()
-        continue
+        if not confirm_filter1(driver, loan_test):
+            driver.quit()
+            continue
 
-    if not result_credit():
-        driver.quit()
-        continue
+        if not confirm_filter2(driver, loan_test):
+            driver.quit()
+            continue
 
-    if not load_loan():
-        driver.quit()
-        continue
+        if not confirm_filter3(driver, loan_test):
+            driver.quit()
+            continue
 
-    if not confirm_detail():
-        driver.quit()
-        continue
+        loan_test.result_pass(driver)
+    loan_test.set_end()
+    result_table(loan_test)
 
-    loan_div = driver.find_elements(By.CSS_SELECTOR, ".resultWrap_1ZJb- > ol:nth-child(2) > li")
 
-    if not confirm_filter1(len(loan_div)):
-        driver.quit()
-
-    if not confirm_filter2(len(loan_div)):
-        driver.quit()
-
-    if not confirm_filter3(len(loan_div)):
-        driver.quit()
-
-    sum_pass += 1
-    print("\x1b[1;34mPass\x1b[1;m")
-
-    driver.quit()
-
-table = BeautifulTable()
-
-table.column_headers = ["Total", "Pass", "Fail", "N/T"]
-table.append_row([total, sum_pass, sum_fail, sum_nt])
-
-print("------------------------테스트 결과------------------------")
-print("실행 날짜: " + datetime.today().strftime("%Y-%m-%d"))
-print("총 실행시간: " + str(int(time.time() - start)) + "s")
-print("한 케이스당 평균 실행시간: " + str(int((time.time() - start)/total)) + "s")
-print(table)
+if __name__ == "__main__":
+    main()
